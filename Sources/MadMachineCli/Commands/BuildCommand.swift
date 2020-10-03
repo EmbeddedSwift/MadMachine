@@ -12,8 +12,13 @@ import MadMachine
 
 final class BuildCommand: Command {
     
-    static let name = "build"
+    enum BinaryType: String {
+        case library
+        case executable
+    }
 
+    static let name = "build"
+    
     /*
      swift run MadMachineCli build \
      --name SwiftIO \
@@ -27,6 +32,9 @@ final class BuildCommand: Command {
         
         @Option(name: "name", short: "n", help: "Name of the build product")
         var name: String?
+        
+        @Option(name: "binary-type", short: "b", help: "Binary type (library or executable)")
+        var binaryType: String?
         
         @Option(name: "input", short: "i", help: "Location of the project to build")
         var input: String?
@@ -58,6 +66,11 @@ final class BuildCommand: Command {
 
     func run(using context: CommandContext, signature: Signature) throws {
         let n = signature.name ?? Path.current.basename
+        
+        var b = BinaryType.library
+        if let rawBinaryType = signature.binaryType, let customBinaryType = BinaryType(rawValue: rawBinaryType) {
+            b = customBinaryType
+        }
 
         var i = Path.current.location
         if let customInput = signature.input {
@@ -94,6 +107,7 @@ final class BuildCommand: Command {
             
             Project:
                 Name: `\(n)`
+                Binary type: `\(b.rawValue)`
                 Input: `\(i)`
                 Output: `\(o)`
                 Import Headers:
@@ -109,9 +123,17 @@ final class BuildCommand: Command {
 
         var logs: [String] = []
         do {
-            try mm.buildLibrary(name: n, input: i, output: o, importHeaders: h, importSearchPaths: p) { progress, log in
-                progressBar.activity.currentProgress = progress
-                logs.append(log)
+            switch b {
+            case .library:
+                try mm.buildLibrary(name: n, input: i, output: o, importHeaders: h, importSearchPaths: p) { progress, log in
+                    progressBar.activity.currentProgress = progress
+                    logs.append(log)
+                }
+            case .executable:
+                try mm.buildExecutable(name: n, input: i, output: o, importHeaders: h, importSearchPaths: p) { progress, log in
+                    progressBar.activity.currentProgress = progress
+                    logs.append(log)
+                }
             }
             progressBar.succeed()
         }

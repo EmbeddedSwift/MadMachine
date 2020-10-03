@@ -61,7 +61,7 @@ public struct MadMachine {
     
     var zephyrPath: Path { Path(toolchainLocation + "/swift/lib/swift/zephyr/thumbv7em") }
     var libraryPaths: [Path] { Path(libLocation).children().filter(\.isVisible).filter(\.isDirectory) }
-    var globalSearchPaths: [String] { ([zephyrPath] + libraryPaths).map(\.location) }
+    var globalSearchPaths: [String] { (libraryPaths + [zephyrPath]).map(\.location) }
 
     /// note: this could be a throwing init...?
     public init(toolchainLocation: String = MadMachine.Paths.toolchain.location,
@@ -77,6 +77,43 @@ public struct MadMachine {
         }
         self.toolchainLocation = toolchainLocation
         self.libLocation = libLocation
+    }
+    
+    // https://stackoverflow.com/questions/53077475/how-to-calculate-checksum-in-swift
+    private func calculateCheckSum(crc: UInt8, byteValue: UInt8) -> UInt8 {
+        let generator: UInt8 = 0x1D
+
+        // a new variable has to be declared inside this function
+        var newCrc = crc ^ byteValue
+
+        for _ in 1...8 {
+            if newCrc & 0x80 != 0 {
+                newCrc = (newCrc << 1) ^ generator
+            }
+            else {
+                newCrc <<= 1
+            }
+        }
+        return newCrc
+    }
+
+    private func run(commands: [String], statusReport: ((Double, String) -> Void)? = nil) throws {
+        var progress: Double = 0.0
+        let increment: Double = (100.0 / Double(commands.count)) / 100.0
+
+        for (i, cmd) in commands.enumerated() {
+            let output = try Shell().run(cmd)
+            let log = """
+            #\(i+1) - Command:
+            `\(cmd)`
+
+            #\(i+1) - Output:
+            `\(output)`
+
+            """
+            progress += increment
+            statusReport?(progress, log)
+        }
     }
     
     /**
@@ -99,15 +136,13 @@ public struct MadMachine {
                                           importHeaders: importHeaders,
                                           importSearchPaths: importSearchPaths + globalSearchPaths)
 
-        let moduleBuildCommand = swiftc.build(target: .module)
-        let objectBuildCommand = swiftc.build(target: .object)
-
         let ar = ArCommandBuilder(machine: self, name: name, location: buildPath.location)
         
         var commands = [
-            moduleBuildCommand,
-            objectBuildCommand,
+            swiftc.build(target: .module),
+            swiftc.build(target: .object),
             ar.build(),
+            
             "rm \(buildPath.location)/*.o",
             "mkdir -p \(output)",
             "mv \(buildPath.location)/* \(output)",
@@ -115,22 +150,78 @@ public struct MadMachine {
         
         commands.insert("mkdir -p \(buildPath.location)", at: 0)
 
-        var progress: Double = 0.0
-        let increment: Double = (100.0 / Double(commands.count)) / 100.0
+        try run(commands: commands, statusReport: statusReport)
 
-        for (i, cmd) in commands.enumerated() {
-            let output = try Shell().run(cmd)
-            let log = """
-            #\(i+1) - Command:
-            `\(cmd)`
+    }
 
-            #\(i+1) - Output:
-            `\(output)`
+    public func buildExecutable(name: String,
+                                input: String,
+                                output: String,
+                                importHeaders: [String] = [],
+                                importSearchPaths: [String] = [],
+                                statusReport: ((Double, String) -> Void)? = nil) throws {
+        
+        let buildPath = Path(input).child(MadMachine.Directories.build)
 
-            """
-            progress += increment
-            statusReport?(progress, log)
+        let searchPaths = importSearchPaths + globalSearchPaths
+        
+        let swiftc = SwiftcCommandBuilder(machine: self,
+                                          name: name,
+                                          location: input,
+                                          importHeaders: importHeaders,
+                                          importSearchPaths: searchPaths)
+
+        let ar = ArCommandBuilder(machine: self, name: name, location: buildPath.location)
+
+        
+        let gpp = GppCommandBuilder(machine: self,
+                                    name: name,
+                                    location: buildPath.location,
+                                    searchPaths: searchPaths)
+        
+        let objcopy = ObjcopyCommandBuilder(machine: self, name: name, location: buildPath.location)
+        
+        let gcc = GccCommandBuilder(machine: self, name: name, location: buildPath.location)
+        
+        let isr = LegacyIsrCommandBuilder(machine: self, name: name, location: buildPath.location)
+
+        var commands = [
+            swiftc.build(target: .executable),
+            ar.build(),
+            gpp.build(phase: .first),
+            objcopy.buildIsr(),
+            isr.build(),
+            gcc.build(),
+            gpp.build(phase: .second),
+            objcopy.buildBinary(),
+
+            "mkdir -p \(output)",
+            "mv \(buildPath.location)/\(name).bin \(output)/swiftio.bin",
+            "rm \(buildPath.location)/*.o",
+        ].map { "cd \(buildPath.location) && " + $0 }
+        
+        commands.insert("mkdir -p \(buildPath.location)", at: 0)
+        
+        try run(commands: commands, statusReport: statusReport)
+
+        /// crc to bin really
+        let data = try Data(contentsOf: Path("\(output)/swiftio.bin").url)
+        let checksum = CRC32.checksum(bytes: data)
+        let mask: UInt32 = (1 << 8) - 1
+        var newData = data.bytes
+        for k in stride(from: 0, to: 32, by: 8) {
+            let x = UInt32(k)
+            let value: UInt32 = checksum >> x & mask
+            let y = UInt8(value)
+            newData.append(y)
         }
+        try newData.data.write(to: Path("\(output)/swiftio.bin").url)
+        try buildPath.delete()
+        
     }
    
 }
+
+
+
+

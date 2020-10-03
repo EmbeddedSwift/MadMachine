@@ -1,5 +1,5 @@
 run:
-	swift run MadMachineCli
+	swift run MadMachineCli build --name DemoProgram --binary-type executable --input /Users/tib/DemoProgram/ --output /Users/tib/DemoProgram/dist
 
 test:
 	swift test --enable-test-discovery
