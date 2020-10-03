@@ -19,7 +19,7 @@ final class BuildCommand: Command {
      --name SwiftIO \
      --input ../SwiftIO \
      --output ./SwiftIO \
-     --import-headers ../SwiftIO/Sources/CHal/include/SwiftHalWrapper.h\
+     --import-headers ../SwiftIO/Sources/CHal/include/SwiftHalWrapper.h \
      --import-search-paths ./,../ \
      --verbose
      */
@@ -71,7 +71,7 @@ final class BuildCommand: Command {
         if let customToolchain = signature.toolchain {
             t = resolve(path: customToolchain)
         }
-        var l = MadMachine.Paths.toolchain.location
+        var l = MadMachine.Paths.lib.location
         if let customLibrary = signature.library {
             l = resolve(path: customLibrary)
         }
