@@ -77,15 +77,17 @@ public struct MadMachine {
 
     /// note: this could be a throwing init...?
     public init(toolchainLocation: String = MadMachine.Paths.toolchain.location,
-                libLocation: String = MadMachine.Paths.lib.location)
+                libLocation: String = MadMachine.Paths.lib.location) throws
     {
         let toolchainPath = Path(toolchainLocation)
         if !toolchainPath.exists || !toolchainPath.isDirectory {
             fatalError("Can not find toolchain path at `\(toolchainLocation)`")
         }
         let libPath = Path(libLocation)
-        if !libPath.exists || !libPath.isDirectory {
-            fatalError("Can not find lib path at `\(libLocation)`")
+        if !libPath.exists {
+            try libPath.create()
+        } else if !libPath.isDirectory {
+            fatalError("Expected lib path to be a directory at `\(libLocation)`")
         }
         self.toolchainLocation = toolchainLocation
         self.libLocation = libLocation
