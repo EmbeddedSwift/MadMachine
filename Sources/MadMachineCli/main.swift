@@ -16,6 +16,7 @@ var commands = Commands(enableAutocomplete: true)
 commands.use(ToolchainCommand(), as: ToolchainCommand.name, isDefault: false)
 commands.use(LibraryCommand(), as: LibraryCommand.name, isDefault: false)
 commands.use(BuildCommand(), as: BuildCommand.name, isDefault: false)
+commands.use(BoardCommand(), as: BoardCommand.name, isDefault: false)
 
 do {
     let group = commands.group(help: "MadMachine command line utility")

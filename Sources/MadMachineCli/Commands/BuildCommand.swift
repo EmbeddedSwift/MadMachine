@@ -60,10 +60,6 @@ final class BuildCommand: Command {
         
     let help = "MadMachine project executable and library builder"
 
-    private func resolve(path: String) -> String {
-        path.hasPrefix("/") ? path : Path.current.child(path).location
-    }
-
     func run(using context: CommandContext, signature: Signature) throws {
         let n = signature.name ?? Path.current.basename
         
@@ -74,27 +70,27 @@ final class BuildCommand: Command {
 
         var i = Path.current.location
         if let customInput = signature.input {
-            i = resolve(path: customInput)
+            i = customInput.resolvedPath
         }
         var o = Path.current.location
         if let customOutput = signature.output {
-            o = resolve(path: customOutput)
+            o = customOutput.resolvedPath
         }
         var t = MadMachine.Paths.toolchain.location
         if let customToolchain = signature.toolchain {
-            t = resolve(path: customToolchain)
+            t = customToolchain.resolvedPath
         }
         var l = MadMachine.Paths.lib.location
         if let customLibrary = signature.library {
-            l = resolve(path: customLibrary)
+            l = customLibrary.resolvedPath
         }
         var h: [String] = []
         if let customImportHeaders = signature.importHeaders {
-            h = customImportHeaders.split(separator: ",").map(String.init).map { resolve(path: $0)}
+            h = customImportHeaders.split(separator: ",").map(String.init).map(\.resolvedPath)
         }
         var p: [String] = []
         if let customImportSearchPaths = signature.importSearchPaths {
-            p = customImportSearchPaths.split(separator: ",").map(String.init).map { resolve(path: $0)}
+            p = customImportSearchPaths.split(separator: ",").map(String.init).map(\.resolvedPath)
         }
                 
         let mm = MadMachine(toolchainLocation: t, libLocation: l)

@@ -54,6 +54,17 @@ public struct MadMachine {
         }
     }
     
+    public enum BoardError: LocalizedError {
+        case unavailable
+
+        public var errorDescription: String? {
+            switch self {
+            case .unavailable:
+                return "MadMachine board is unavailable."
+            }
+        }
+    }
+    
     public static let toolchainRepo = "EmbeddedSwift/MadMachineToolchain"
 
     let toolchainLocation: String
@@ -219,7 +230,74 @@ public struct MadMachine {
         try buildPath.delete()
         
     }
-   
+
+    /// this method will find the volume of the board if it is in download mode
+    public func findBoardDownloadVolume() throws -> String {
+        struct Volume: Decodable {
+            let mount_point: String
+        }
+
+        struct MediaItem: Decodable {
+            let volumes: [Volume]
+        }
+
+        struct USBItem: Decodable {
+            let Media: [MediaItem]?
+            let serial_num: String?
+            let vendor_id: String?
+            let product_id: String?
+        }
+
+        struct USBBus: Decodable {
+            let _name: String
+            let _items: [USBItem]?
+        }
+
+        struct SPUSBDataType: Decodable {
+            let SPUSBDataType: [USBBus]
+        }
+        
+        let output = try Shell().run("/usr/sbin/system_profiler -json SPUSBDataType")
+
+        guard let data = output.data(using: .utf8) else {
+            throw BoardError.unavailable
+        }
+
+        let bus = try JSONDecoder().decode(SPUSBDataType.self, from: data)
+        let mountPoint = bus.SPUSBDataType.reduce([]) { (res: [USBItem], item: USBBus) in
+              var newResult: [USBItem] = res
+              newResult.append(contentsOf: item._items ?? [])
+              return newResult
+        }
+        .first(where: { $0.serial_num == "0123456789ABCDEF" && $0.product_id == "0x0093"})?
+        .Media?.first?
+        .volumes.first?
+        .mount_point
+        .components(separatedBy: .newlines)
+        .last
+
+        guard let volume = mountPoint, volume.hasPrefix("/") else {
+            throw BoardError.unavailable
+        }
+        return volume
+    }
+    
+    public func deployBinary(at location: String) throws {
+        let volume = try findBoardDownloadVolume()
+        print("cp \(location.quoted) \(volume.quoted)")
+        try Shell().run("cp \(location.quoted) \(volume.quoted)")
+    }
+
+    public func eject() throws  {
+        let volume = try findBoardDownloadVolume()
+        try Shell().run("/usr/sbin/diskutil eject \(volume.quoted)")
+    }
+    
+    public func reset() throws  {
+        let volume = try findBoardDownloadVolume()
+        try Shell().run("rm \(volume.quoted)/swiftio.bin")
+    }
+
 }
 
 
