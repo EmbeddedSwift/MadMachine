@@ -25,7 +25,7 @@ struct ArCommandBuilder {
     }
 
     var args: [String] {
-        ["-rcs", "lib\(name).a"] + FileManager.default.findFiles(at: location, "o").map(\.path).map(\.quoted)
+        ["-rcs", "\(location)/lib\(name).a"] + FileManager.default.findFiles(at: location, "o").map(\.path).map(\.quoted)
     }
 
     func build() -> String {

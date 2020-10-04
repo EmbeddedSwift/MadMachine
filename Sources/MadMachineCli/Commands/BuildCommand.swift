@@ -114,7 +114,7 @@ final class BuildCommand: Command {
             context.console.info(info)
         }
         
-        let progressBar = context.console.progressBar(title: "Building `\(n)` library")
+        let progressBar = context.console.progressBar(title: "Building `\(n)` \(b.rawValue)")
         progressBar.start()
 
         var logs: [String] = []

@@ -13,6 +13,7 @@ public struct MadMachine {
 
     public struct Files {
         public static let toolchainVersion = "toolchain-version"
+        public static let binaryName = "swiftio.bin"
     }
 
     public struct Directories {
@@ -108,15 +109,16 @@ public struct MadMachine {
         return newCrc
     }
 
-    private func run(commands: [String], statusReport: ((Double, String) -> Void)? = nil) throws {
+    private func run(commands: [(() -> String)], statusReport: ((Double, String) -> Void)? = nil) throws {
         var progress: Double = 0.0
         let increment: Double = (100.0 / Double(commands.count)) / 100.0
 
         for (i, cmd) in commands.enumerated() {
-            let output = try Shell().run(cmd)
+            let cmdStr = cmd()
+            let output = try Shell().run(cmdStr)
             let log = """
             #\(i+1) - Command:
-            `\(cmd)`
+            `\(cmdStr)`
 
             #\(i+1) - Output:
             `\(output)`
@@ -149,17 +151,18 @@ public struct MadMachine {
 
         let ar = ArCommandBuilder(machine: self, name: name, location: buildPath.location)
         
-        var commands = [
-            swiftc.build(target: .module),
-            swiftc.build(target: .object),
-            ar.build(),
+        let chdir = "cd \(buildPath.location) && "
+        var commands: [(() -> String)] = [
+            { chdir + swiftc.build(target: .module) },
+            { chdir + swiftc.build(target: .object) },
+            { chdir + ar.build() },
             
-            "rm \(buildPath.location)/*.o",
-            "mkdir -p \(output)",
-            "mv \(buildPath.location)/* \(output)",
-        ].map { "cd \(buildPath.location) && " + $0 }
+            { chdir + "rm \(buildPath.location)/*.o" },
+            { chdir + "mkdir -p \(output)" } ,
+            { chdir + "mv \(buildPath.location)/* \(output)" },
+        ]
         
-        commands.insert("mkdir -p \(buildPath.location)", at: 0)
+        commands.insert({ "mkdir -p \(buildPath.location)" }, at: 0)
 
         try run(commands: commands, statusReport: statusReport)
 
@@ -196,28 +199,30 @@ public struct MadMachine {
         
         let isr = LegacyIsrCommandBuilder(machine: self, name: name, location: buildPath.location)
 
-        var commands = [
-            swiftc.build(target: .executable),
-            ar.build(),
-            gpp.build(phase: .first),
-            objcopy.buildIsr(),
-            isr.build(),
-            gcc.build(),
-            gpp.build(phase: .second),
-            objcopy.buildBinary(),
+        let chdir = "cd \(buildPath.location) && "
+        var commands: [(() -> String)] = [
+            { chdir + swiftc.build(target: .executable) },
+            { chdir + ar.build() } ,
+            { chdir + gpp.build(phase: .first) },
+            { chdir + objcopy.buildIsr() },
+            { chdir + isr.build() },
+            { chdir + gcc.build() },
+            { chdir + gpp.build(phase: .second) },
+            { chdir + objcopy.buildBinary() },
 
-            "mkdir -p \(output)",
-            "mv \(buildPath.location)/\(name).bin \(output)/swiftio.bin",
-            "rm \(buildPath.location)/*.o",
-        ].map { "cd \(buildPath.location) && " + $0 }
-        
-        commands.insert("mkdir -p \(buildPath.location)", at: 0)
-        
+            { chdir + "mkdir -p \(output)" },
+            { chdir + "mv \(buildPath.location)/\(name).bin \(output)/\(MadMachine.Files.binaryName)" },
+            { chdir + "rm \(buildPath.location)/*.o" },
+        ]
+
+        commands.insert({ "mkdir -p \(buildPath.location)" }, at: 0)
+
         try run(commands: commands, statusReport: statusReport)
 
-        /// crc to bin really
-        let data = try Data(contentsOf: Path("\(output)/swiftio.bin").url)
+        /// crc to bin, really basic solution
+        let data = try Data(contentsOf: Path("\(output)/\(MadMachine.Files.binaryName)").url)
         let checksum = CRC32.checksum(bytes: data)
+
         let mask: UInt32 = (1 << 8) - 1
         var newData = data.bytes
         for k in stride(from: 0, to: 32, by: 8) {
@@ -226,7 +231,8 @@ public struct MadMachine {
             let y = UInt8(value)
             newData.append(y)
         }
-        try newData.data.write(to: Path("\(output)/swiftio.bin").url)
+
+        try newData.data.write(to: Path("\(output)/\(MadMachine.Files.binaryName)").url)
         try buildPath.delete()
         
     }
@@ -284,8 +290,7 @@ public struct MadMachine {
     
     public func deployBinary(at location: String) throws {
         let volume = try findBoardDownloadVolume()
-        print("cp \(location.quoted) \(volume.quoted)")
-        try Shell().run("cp \(location.quoted) \(volume.quoted)")
+        try Shell().run("cp \(location.quoted) \(volume.quoted)/\(MadMachine.Files.binaryName)")
     }
 
     public func eject() throws  {
@@ -295,7 +300,7 @@ public struct MadMachine {
     
     public func reset() throws  {
         let volume = try findBoardDownloadVolume()
-        try Shell().run("rm \(volume.quoted)/swiftio.bin")
+        try Shell().run("rm \(volume.quoted)/\(MadMachine.Files.binaryName)")
     }
 
 }
