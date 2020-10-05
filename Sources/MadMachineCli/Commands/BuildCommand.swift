@@ -93,7 +93,7 @@ final class BuildCommand: Command {
             p = customImportSearchPaths.split(separator: ",").map(String.init).map(\.resolvedPath)
         }
                 
-        let mm = MadMachine(toolchainLocation: t, libLocation: l)
+        let mm = try MadMachine(toolchainLocation: t, libLocation: l)
 
         if signature.verbose {
             let info = """
